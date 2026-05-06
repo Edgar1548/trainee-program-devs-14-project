@@ -1,11 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { AdminDashboard } from '@/features/admin';
 import { ProtectedRoute, RoleGuard } from '@/features/auth';
+import { AdminCourseCreatePage, AdminCourseEditPage, AdminCoursesPage } from '@/features/courses';
 import { Home, Login, Register, Unauthorized } from '@/pages';
 import { SectionErrorBoundary } from '@/shared/providers';
-
-function AdminDashboard() {
-  return <h1>Panel de administracion</h1>;
-}
 
 function Catalog() {
   return <h1>Catalogo de cursos</h1>;
@@ -17,6 +15,14 @@ function Courses() {
 
 function LearningPaths() {
   return <h1>Rutas de aprendizaje</h1>;
+}
+
+function AdminPlaceholder({ title }: { title: string }) {
+  return (
+    <main className="page-placeholder">
+      <h1>{title}</h1>
+    </main>
+  );
 }
 
 export function AppRouter() {
@@ -53,7 +59,8 @@ export function AppRouter() {
           }
         />
 
-        <Route element={<RoleGuard allowedRoles={['ADMIN']} />}>
+        <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+        <Route element={<RoleGuard allowedRoles={['ADMIN']} redirectTo="/" />}>
           <Route
             path="/admin/dashboard"
             element={
@@ -62,6 +69,31 @@ export function AppRouter() {
               </SectionErrorBoundary>
             }
           />
+          <Route
+            path="/admin/courses"
+            element={
+              <SectionErrorBoundary name="AdminCourses" fallbackVariant="card">
+                <AdminCoursesPage />
+              </SectionErrorBoundary>
+            }
+          />
+          <Route
+            path="/admin/courses/new"
+            element={
+              <SectionErrorBoundary name="AdminCourseCreate" fallbackVariant="card">
+                <AdminCourseCreatePage />
+              </SectionErrorBoundary>
+            }
+          />
+          <Route
+            path="/admin/courses/:courseId/edit"
+            element={
+              <SectionErrorBoundary name="AdminCourseEdit" fallbackVariant="card">
+                <AdminCourseEditPage />
+              </SectionErrorBoundary>
+            }
+          />
+          <Route path="/admin/users" element={<AdminPlaceholder title="Gestionar usuarios" />} />
         </Route>
       </Route>
 
