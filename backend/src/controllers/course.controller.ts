@@ -8,3 +8,9 @@ export const listCourses = async (req: Request, res: Response) => {
 
   return res.status(200).json(result);
 };
+
+export const getCourseById = async (req: Request<{ id: string }>, res: Response) => {
+  const result = await courseService.getCourseById(req.params.id);
+
+  return res.status(200).json(result);
+};

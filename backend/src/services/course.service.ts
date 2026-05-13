@@ -1,8 +1,6 @@
-import { CourseDifficulty, CourseStatus, Prisma } from '@prisma/client';
+import { CourseStatus, Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
-import type { CreateCourseInput } from '../modules/courses/schemas/createCourseSchema.js';
 import type { ListCoursesQuery } from '../modules/courses/schemas/listCoursesSchema.js';
-import type { UpdateCourseInput } from '../modules/courses/schemas/updateCourseSchema.js';
 import { NotFoundError } from '../utils/app-error.js';
 
 const buildCourseWhere = ({ search, isPublic }: Pick<ListCoursesQuery, 'search' | 'isPublic'>) => {
@@ -77,7 +75,68 @@ const listCourses = async (query: ListCoursesQuery) => {
   };
 };
 
+const getCourseById = async (courseId: string) => {
+  const course = await prisma.course.findUnique({
+    where: {
+      id: courseId,
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      category: true,
+      difficulty: true,
+      coverImage: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      modules: {
+        orderBy: {
+          order: 'asc',
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          order: true,
+          createdAt: true,
+          lessons: {
+            orderBy: {
+              order: 'asc',
+            },
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              duration: true,
+              order: true,
+              createdAt: true,
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          enrollments: true,
+        },
+      },
+    },
+  });
+
+  if (!course) {
+    throw new NotFoundError('Curso no encontrado');
+  }
+
+  const { _count, ...courseData } = course;
+
+  return {
+    ...courseData,
+    isPublic: course.status === CourseStatus.PUBLISHED,
+    enrollmentCount: _count.enrollments,
+  };
+};
 
 export const courseService = {
   listCourses,
+  getCourseById,
 };
