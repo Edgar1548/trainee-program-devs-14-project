@@ -6,11 +6,36 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { CourseDetail } from '../types/course.types';
 import { InlineEdit } from './InlineEdit';
 
+type PendingDelete =
+  | {
+      type: 'module';
+      moduleId: string;
+      title: string;
+      lessonCount: number;
+    }
+  | {
+      type: 'lesson';
+      moduleId: string;
+      lessonId: string;
+      title: string;
+    };
+
 type ModuleAccordionProps = {
   modules: CourseDetail['modules'];
+  isSaving?: boolean;
+  onAddModule?: () => void;
+  onAddLesson?: (moduleId: string) => void;
   onEditModule?: (moduleId: string) => void;
   onDeleteModule?: (moduleId: string) => void;
   onMoveModule?: (moduleId: string, direction: 'up' | 'down') => void;
@@ -25,6 +50,9 @@ type ModuleAccordionProps = {
 
 export function ModuleAccordion({
   modules,
+  isSaving = false,
+  onAddModule,
+  onAddLesson,
   onEditModule,
   onDeleteModule,
   onMoveModule,
@@ -37,47 +65,82 @@ export function ModuleAccordion({
   onUpdateLessonTitle,
 }: ModuleAccordionProps) {
   const [activeEditKey, setActiveEditKey] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   if (modules.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-        Este curso todavia no tiene modulos.
-      </p>
+      <div className="grid gap-3 rounded-lg border border-dashed border-border p-4">
+        <p className="text-sm text-muted-foreground">Este curso todavia no tiene modulos.</p>
+        {onAddModule ? (
+          <Button className="w-fit" type="button" variant="outline" onClick={onAddModule} disabled={isSaving}>
+            Agregar modulo
+          </Button>
+        ) : null}
+      </div>
     );
   }
 
   const firstModuleValue = modules[0]?.id ?? String(modules[0]?.order);
+  const deleteDescription =
+    pendingDelete?.type === 'module'
+      ? pendingDelete.lessonCount === 1
+        ? 'Este modulo contiene 1 leccion que tambien se eliminara.'
+        : `Este modulo contiene ${pendingDelete?.lessonCount ?? 0} lecciones que tambien se eliminaran.`
+      : 'Esta leccion se eliminara del modulo y ya no aparecera en la estructura del curso.';
+
+  const confirmDelete = () => {
+    if (!pendingDelete) {
+      return;
+    }
+
+    if (pendingDelete.type === 'module') {
+      onDeleteModule?.(pendingDelete.moduleId);
+    } else {
+      onDeleteLesson?.(pendingDelete.lessonId);
+    }
+
+    setPendingDelete(null);
+  };
 
   return (
-    <Accordion type="multiple" defaultValue={firstModuleValue ? [firstModuleValue] : []}>
-      {modules.map((module, index) => (
-        <AccordionItem
-          key={module.id ?? module.order}
-          value={module.id ?? String(module.order)}
-          draggable={Boolean(module.id && onReorderModules)}
-          onDragStart={(event) => {
-            if (!module.id) {
-              return;
-            }
+    <>
+      <div className="mb-4 flex justify-end">
+        {onAddModule ? (
+          <Button type="button" variant="outline" onClick={onAddModule} disabled={isSaving}>
+            Agregar modulo
+          </Button>
+        ) : null}
+      </div>
 
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('application/learnpath-module-id', module.id);
-          }}
-          onDragOver={(event) => {
-            if (onReorderModules) {
-              event.preventDefault();
-            }
-          }}
-          onDrop={(event) => {
-            const sourceModuleId = event.dataTransfer.getData('application/learnpath-module-id');
+      <Accordion type="multiple" defaultValue={firstModuleValue ? [firstModuleValue] : []}>
+        {modules.map((module, index) => (
+          <AccordionItem
+            key={module.id ?? module.order}
+            value={module.id ?? String(module.order)}
+            draggable={Boolean(module.id && onReorderModules)}
+            onDragStart={(event) => {
+              if (!module.id) {
+                return;
+              }
 
-            if (module.id && sourceModuleId && sourceModuleId !== module.id) {
-              event.preventDefault();
-              onReorderModules?.(sourceModuleId, module.id);
-            }
-          }}
-          className="transition-shadow data-[drag-over=true]:shadow-lg"
-        >
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('application/learnpath-module-id', module.id);
+            }}
+            onDragOver={(event) => {
+              if (onReorderModules) {
+                event.preventDefault();
+              }
+            }}
+            onDrop={(event) => {
+              const sourceModuleId = event.dataTransfer.getData('application/learnpath-module-id');
+
+              if (module.id && sourceModuleId && sourceModuleId !== module.id) {
+                event.preventDefault();
+                onReorderModules?.(sourceModuleId, module.id);
+              }
+            }}
+            className="transition-shadow data-[drag-over=true]:shadow-lg"
+          >
           <AccordionTrigger>
             <span className="grid gap-1">
               <span className="font-semibold" onDoubleClick={(event) => event.stopPropagation()}>
@@ -134,8 +197,16 @@ export function ModuleAccordion({
                   type="button"
                   variant="destructive"
                   size="sm"
-                  onClick={() => module.id && onDeleteModule?.(module.id)}
-                  disabled={!module.id}
+                  onClick={() =>
+                    module.id &&
+                    setPendingDelete({
+                      type: 'module',
+                      moduleId: module.id,
+                      title: module.title,
+                      lessonCount: module.lessons.length,
+                    })
+                  }
+                  disabled={!module.id || isSaving}
                 >
                   Eliminar
                 </Button>
@@ -160,7 +231,24 @@ export function ModuleAccordion({
               </div>
 
               <div className="grid gap-3">
-                <p className="text-sm font-semibold text-foreground">Lecciones</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">Lecciones</p>
+                  {module.id && onAddLesson ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (module.id) {
+                          onAddLesson(module.id);
+                        }
+                      }}
+                      disabled={isSaving}
+                    >
+                      Agregar leccion
+                    </Button>
+                  ) : null}
+                </div>
                 {module.lessons.length > 0 ? (
                   <ol className="grid gap-2">
                     {module.lessons.map((lesson, lessonIndex) => (
@@ -243,8 +331,17 @@ export function ModuleAccordion({
                             type="button"
                             variant="destructive"
                             size="sm"
-                            onClick={() => lesson.id && onDeleteLesson?.(lesson.id)}
-                            disabled={!lesson.id}
+                            onClick={() =>
+                              module.id &&
+                              lesson.id &&
+                              setPendingDelete({
+                                type: 'lesson',
+                                moduleId: module.id,
+                                lessonId: lesson.id,
+                                title: lesson.title,
+                              })
+                            }
+                            disabled={!lesson.id || isSaving}
                           >
                             Eliminar
                           </Button>
@@ -278,8 +375,30 @@ export function ModuleAccordion({
               </div>
             </div>
           </AccordionContent>
-        </AccordionItem>
-      ))}
-    </Accordion>
+          </AccordionItem>
+        ))}
+      </Accordion>
+
+      <Dialog open={Boolean(pendingDelete)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Eliminar {pendingDelete?.type === 'module' ? 'modulo' : 'leccion'}
+            </DialogTitle>
+            <DialogDescription>
+              {pendingDelete ? `Vas a eliminar "${pendingDelete.title}". ${deleteDescription}` : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPendingDelete(null)} disabled={isSaving}>
+              Cancelar
+            </Button>
+            <Button type="button" variant="destructive" onClick={confirmDelete} disabled={isSaving}>
+              Confirmar eliminacion
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

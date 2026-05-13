@@ -35,6 +35,16 @@ const reorderById = <T extends { id?: string; order: number }>(items: T[], sourc
   }));
 };
 
+const normalizeModulesOrder = (modules: CourseDetail['modules']): CourseDetail['modules'] =>
+  modules.map((module, moduleIndex) => ({
+    ...module,
+    order: moduleIndex + 1,
+    lessons: module.lessons.map((lesson, lessonIndex) => ({
+      ...lesson,
+      order: lessonIndex + 1,
+    })),
+  }));
+
 export function AdminCourseEditPage() {
   const { courseId } = useParams();
   const courseQuery = useCourse(courseId);
@@ -137,6 +147,79 @@ export function AdminCourseEditPage() {
     });
   };
 
+  const handleAddModule = () => {
+    if (!courseQuery.data) {
+      return;
+    }
+
+    void persistCourseStructure({
+      ...courseQuery.data,
+      modules: normalizeModulesOrder([
+        ...courseQuery.data.modules,
+        {
+          title: 'Nuevo modulo',
+          description: '',
+          order: courseQuery.data.modules.length + 1,
+          lessons: [],
+        },
+      ]),
+    });
+  };
+
+  const handleAddLesson = (moduleId: string) => {
+    if (!courseQuery.data) {
+      return;
+    }
+
+    void persistCourseStructure({
+      ...courseQuery.data,
+      modules: normalizeModulesOrder(
+        courseQuery.data.modules.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                lessons: [
+                  ...module.lessons,
+                  {
+                    title: 'Nueva leccion',
+                    content: '{"blocks":[]}',
+                    order: module.lessons.length + 1,
+                  },
+                ],
+              }
+            : module,
+        ),
+      ),
+    });
+  };
+
+  const handleDeleteModule = (moduleId: string) => {
+    if (!courseQuery.data) {
+      return;
+    }
+
+    void persistCourseStructure({
+      ...courseQuery.data,
+      modules: normalizeModulesOrder(courseQuery.data.modules.filter((module) => module.id !== moduleId)),
+    });
+  };
+
+  const handleDeleteLesson = (lessonId: string) => {
+    if (!courseQuery.data) {
+      return;
+    }
+
+    void persistCourseStructure({
+      ...courseQuery.data,
+      modules: normalizeModulesOrder(
+        courseQuery.data.modules.map((module) => ({
+          ...module,
+          lessons: module.lessons.filter((lesson) => lesson.id !== lessonId),
+        })),
+      ),
+    });
+  };
+
   return (
     <main className="min-h-svh bg-[var(--bg)] px-4 py-6 md:px-6">
       <section className="mx-auto grid max-w-5xl gap-6" aria-labelledby="course-edit-title">
@@ -184,6 +267,11 @@ export function AdminCourseEditPage() {
               <CardContent>
                 <ModuleAccordion
                   modules={courseQuery.data.modules}
+                  isSaving={updateCourse.isPending}
+                  onAddModule={handleAddModule}
+                  onAddLesson={handleAddLesson}
+                  onDeleteModule={handleDeleteModule}
+                  onDeleteLesson={handleDeleteLesson}
                   onReorderModules={handleReorderModules}
                   onReorderLessons={handleReorderLessons}
                   onUpdateModuleTitle={handleUpdateModuleTitle}
