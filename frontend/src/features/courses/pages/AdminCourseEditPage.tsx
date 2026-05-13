@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CourseForm } from '../components/CourseForm';
+import { ModuleAccordion } from '../components/ModuleAccordion';
 import { useCourse, useUpdateCourse } from '../hooks/useCourses';
 import type { CourseFormData } from '../schemas/course.schema';
 
@@ -74,13 +75,24 @@ export function AdminCourseEditPage() {
             </CardContent>
           </Card>
         ) : (
-          <CourseForm
-            initialValues={toFormData(courseQuery.data)}
-            submitLabel="Guardar cambios"
-            isSubmitting={updateCourse.isPending}
-            onSubmit={(values) => void handleSubmit(values)}
-            formError={formError}
-          />
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>Estructura del curso</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ModuleAccordion modules={courseQuery.data.modules} />
+              </CardContent>
+            </Card>
+
+            <CourseForm
+              initialValues={toFormData(courseQuery.data)}
+              submitLabel="Guardar cambios"
+              isSubmitting={updateCourse.isPending}
+              onSubmit={(values) => void handleSubmit(values)}
+              formError={formError}
+            />
+          </>
         )}
       </section>
     </main>

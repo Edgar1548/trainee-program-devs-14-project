@@ -29,7 +29,7 @@ export function QuickActions() {
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
         {quickActions.map((action) => (
-          <Button key={action.to} asChild className="min-h-11 w-full justify-start">
+          <Button key={action.to} asChild className="min-h-11 w-full justify-start text-primary-foreground">
             <Link to={action.to}>{action.label}</Link>
           </Button>
         ))}
