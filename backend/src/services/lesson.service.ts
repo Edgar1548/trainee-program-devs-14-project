@@ -1,5 +1,13 @@
 import { prisma } from '../config/prisma.js';
+import type { CreateLessonInput } from '../modules/lessons/schemas/createLessonSchema.js';
 import { NotFoundError } from '../utils/app-error.js';
+
+const DEFAULT_LESSON_DURATION = 0;
+const DEFAULT_EDITOR_CONTENT = {
+  time: 0,
+  blocks: [],
+  version: '2.28.0',
+};
 
 const parseLessonContent = (content: string) => {
   try {
@@ -99,7 +107,66 @@ const getLessonById = async (lessonId: string) => {
   };
 };
 
+const createLesson = async (moduleId: string, input: CreateLessonInput) => {
+  return prisma.$transaction(async (tx) => {
+    const module = await tx.module.findUnique({
+      where: {
+        id: moduleId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!module) {
+      throw new NotFoundError('Modulo no encontrado');
+    }
+
+    const orderAggregate = await tx.lesson.aggregate({
+      where: {
+        moduleId,
+      },
+      _max: {
+        order: true,
+      },
+    });
+    const nextOrder = (orderAggregate._max.order ?? 0) + 1;
+
+    const lesson = await tx.lesson.create({
+      data: {
+        title: input.title,
+        content: JSON.stringify(input.content ?? DEFAULT_EDITOR_CONTENT),
+        duration: DEFAULT_LESSON_DURATION,
+        order: nextOrder,
+        moduleId,
+      },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        order: true,
+        moduleId: true,
+        createdAt: true,
+        _count: {
+          select: {
+            quizzes: true,
+          },
+        },
+      },
+    });
+
+    const { _count, content, ...lessonData } = lesson;
+
+    return {
+      ...lessonData,
+      content: parseLessonContent(content),
+      hasQuiz: _count.quizzes > 0,
+    };
+  });
+};
+
 export const lessonService = {
+  createLesson,
   getLessonById,
   listLessonsByModule,
 };
