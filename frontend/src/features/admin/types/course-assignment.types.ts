@@ -3,4 +3,5 @@ export type AssignmentUser = {
   name: string;
   email: string;
   role: 'STUDENT' | 'ADMIN';
+  assignedAt?: string;
 };

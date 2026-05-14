@@ -9,10 +9,14 @@ import { useDebounce } from '@/shared/hooks';
 import { assignmentUsers } from '../data/assignmentUsers';
 import { AdminSidebar } from './AdminSidebar';
 
+const pageSize = 10;
+
 export function CourseAssignmentPanel() {
   const coursesQuery = useCourses({ status: 'ALL', page: 1, pageSize: 100 });
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const courses = useMemo(() => coursesQuery.data?.courses ?? [], [coursesQuery.data?.courses]);
@@ -32,6 +36,27 @@ export function CourseAssignmentPanel() {
       );
     });
   }, [debouncedSearchTerm]);
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedUsers = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * pageSize;
+
+    return filteredUsers.slice(startIndex, startIndex + pageSize);
+  }, [filteredUsers, safeCurrentPage]);
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((current) => {
+      const nextSelection = new Set(current);
+
+      if (nextSelection.has(userId)) {
+        nextSelection.delete(userId);
+      } else {
+        nextSelection.add(userId);
+      }
+
+      return nextSelection;
+    });
+  };
 
   return (
     <main className="min-h-svh bg-[var(--bg)]">
@@ -103,38 +128,83 @@ export function CourseAssignmentPanel() {
               <span className="font-semibold text-foreground">Buscar usuario</span>
               <Input
                 value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
+                onChange={(event) => {
+                  setSearchTerm(event.target.value);
+                  setCurrentPage(1);
+                }}
                 placeholder="Buscar por nombre o email"
               />
             </label>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-left">
+              <table className="w-full min-w-[760px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-border text-sm text-muted-foreground">
+                    <th className="py-3 pr-4">Seleccion</th>
                     <th className="py-3 pr-4">Usuario</th>
                     <th className="py-3 pr-4">Email</th>
-                    <th className="py-3 pr-4">Rol</th>
-                    <th className="py-3 text-right">Asignacion</th>
+                    <th className="py-3 pr-4">Estado</th>
+                    <th className="py-3 text-right">Fecha de asignacion</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((user) => (
+                  {paginatedUsers.map((user) => (
                     <tr key={user.id} className="border-b border-border last:border-b-0">
+                      <td className="py-4 pr-4">
+                        <input
+                          className="size-5 accent-[var(--accent)]"
+                          type="checkbox"
+                          checked={selectedUserIds.has(user.id)}
+                          onChange={() => toggleUserSelection(user.id)}
+                          aria-label={`Seleccionar ${user.name}`}
+                        />
+                      </td>
                       <td className="py-4 pr-4">
                         <p className="font-semibold text-foreground">{user.name}</p>
                       </td>
                       <td className="py-4 pr-4">{user.email}</td>
-                      <td className="py-4 pr-4">{user.role === 'ADMIN' ? 'Administrador' : 'Estudiante'}</td>
+                      <td className="py-4 pr-4">
+                        <span
+                          className={
+                            user.assignedAt
+                              ? 'rounded-lg bg-primary/10 px-2 py-1 text-sm font-semibold text-primary'
+                              : 'rounded-lg border border-border px-2 py-1 text-sm font-semibold text-muted-foreground'
+                          }
+                        >
+                          {user.assignedAt ? 'Asignado' : 'No asignado'}
+                        </span>
+                      </td>
                       <td className="py-4 text-right">
-                        <Button type="button" variant="outline" size="sm" disabled={!activeCourseId}>
-                          Disponible
-                        </Button>
+                        {user.assignedAt ? new Date(user.assignedAt).toLocaleDateString('es-PE') : '-'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Pagina {safeCurrentPage} de {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={safeCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                >
+                  Siguiente
+                </Button>
+              </div>
             </div>
             {filteredUsers.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
