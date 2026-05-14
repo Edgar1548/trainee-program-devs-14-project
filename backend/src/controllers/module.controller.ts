@@ -1,5 +1,8 @@
 import type { Request, Response } from 'express';
-import type { CreateModuleInput } from '../modules/courses/schemas/moduleSchema.js';
+import type {
+  CreateModuleInput,
+  UpdateModuleInput,
+} from '../modules/courses/schemas/moduleSchema.js';
 import { moduleService } from '../services/module.service.js';
 
 export const listCourseModules = async (
@@ -18,4 +21,22 @@ export const createCourseModule = async (
   const result = await moduleService.createModule(req.params.courseId, req.body);
 
   return res.status(201).json(result);
+};
+
+export const updateModule = async (
+  req: Request<{ id: string }, unknown, UpdateModuleInput>,
+  res: Response,
+) => {
+  const result = await moduleService.updateModule(req.params.id, req.body);
+
+  return res.status(200).json(result);
+};
+
+export const deleteModule = async (
+  req: Request<{ id: string }>,
+  res: Response,
+) => {
+  await moduleService.deleteModule(req.params.id);
+
+  return res.status(204).send();
 };

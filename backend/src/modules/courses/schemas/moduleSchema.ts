@@ -14,3 +14,18 @@ export const createModuleSchema = z.object({
 });
 
 export type CreateModuleInput = z.infer<typeof createModuleSchema>;
+
+export const updateModuleSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(3, 'El titulo debe tener al menos 3 caracteres')
+    .max(100, 'El titulo no puede superar 100 caracteres'),
+  description: z
+    .string()
+    .trim()
+    .max(300, 'La descripcion no puede superar 300 caracteres')
+    .optional(),
+});
+
+export type UpdateModuleInput = z.infer<typeof updateModuleSchema>;
