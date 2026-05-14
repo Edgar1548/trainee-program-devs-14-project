@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCourses } from '@/features/courses';
 import { useDebounce } from '@/shared/hooks';
 import { assignmentUsers } from '../data/assignmentUsers';
+import type { AssignmentUser } from '../types/course-assignment.types';
 import { AdminSidebar } from './AdminSidebar';
 
 const pageSize = 10;
@@ -17,6 +18,7 @@ export function CourseAssignmentPanel() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
+  const [users, setUsers] = useState<AssignmentUser[]>(assignmentUsers);
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const courses = useMemo(() => coursesQuery.data?.courses ?? [], [coursesQuery.data?.courses]);
@@ -26,16 +28,16 @@ export function CourseAssignmentPanel() {
     const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
 
     if (!normalizedSearch) {
-      return assignmentUsers;
+      return users;
     }
 
-    return assignmentUsers.filter((user) => {
+    return users.filter((user) => {
       return (
         user.name.toLowerCase().includes(normalizedSearch) ||
         user.email.toLowerCase().includes(normalizedSearch)
       );
     });
-  }, [debouncedSearchTerm]);
+  }, [debouncedSearchTerm, users]);
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const paginatedUsers = useMemo(() => {
@@ -44,7 +46,14 @@ export function CourseAssignmentPanel() {
     return filteredUsers.slice(startIndex, startIndex + pageSize);
   }, [filteredUsers, safeCurrentPage]);
 
-  const toggleUserSelection = (userId: string) => {
+  const selectedCount = selectedUserIds.size;
+  const selectedUsers = useMemo(() => {
+    return users.filter((user) => selectedUserIds.has(user.id));
+  }, [selectedUserIds, users]);
+  const hasAssignableSelection = selectedUsers.some((user) => !user.assignedAt);
+  const hasUnassignableSelection = selectedUsers.some((user) => Boolean(user.assignedAt));
+
+  const toggleUserSelection = useCallback((userId: string) => {
     setSelectedUserIds((current) => {
       const nextSelection = new Set(current);
 
@@ -56,7 +65,39 @@ export function CourseAssignmentPanel() {
 
       return nextSelection;
     });
-  };
+  }, []);
+
+  const handleBulkAssign = useCallback(() => {
+    const assignedAt = new Date().toISOString();
+
+    setUsers((currentUsers) =>
+      currentUsers.map((user) =>
+        selectedUserIds.has(user.id)
+          ? {
+              ...user,
+              assignedAt,
+            }
+          : user,
+      ),
+    );
+    setSelectedUserIds(new Set());
+  }, [selectedUserIds]);
+
+  const handleBulkUnassign = useCallback(() => {
+    setUsers((currentUsers) =>
+      currentUsers.map((user) => {
+        if (!selectedUserIds.has(user.id)) {
+          return user;
+        }
+
+        return {
+          ...user,
+          assignedAt: undefined,
+        };
+      }),
+    );
+    setSelectedUserIds(new Set());
+  }, [selectedUserIds]);
 
   return (
     <main className="min-h-svh bg-[var(--bg)]">
@@ -135,6 +176,29 @@ export function CourseAssignmentPanel() {
                 placeholder="Buscar por nombre o email"
               />
             </label>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-[var(--bg)] p-3">
+              <p className="text-sm font-semibold text-foreground">
+                {selectedCount} {selectedCount === 1 ? 'usuario seleccionado' : 'usuarios seleccionados'}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={handleBulkAssign}
+                  disabled={!activeCourseId || selectedCount === 0 || !hasAssignableSelection}
+                >
+                  Asignar seleccionados
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleBulkUnassign}
+                  disabled={!activeCourseId || selectedCount === 0 || !hasUnassignableSelection}
+                >
+                  Desasignar seleccionados
+                </Button>
+              </div>
+            </div>
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] border-collapse text-left">
