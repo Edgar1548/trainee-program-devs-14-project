@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type {
   CreateModuleInput,
+  ReorderModulesInput,
   UpdateModuleInput,
 } from '../modules/courses/schemas/moduleSchema.js';
 import { moduleService } from '../services/module.service.js';
@@ -39,4 +40,13 @@ export const deleteModule = async (
   await moduleService.deleteModule(req.params.id);
 
   return res.status(204).send();
+};
+
+export const reorderModules = async (
+  req: Request<Record<string, never>, unknown, ReorderModulesInput>,
+  res: Response,
+) => {
+  const result = await moduleService.reorderModules(req.body);
+
+  return res.status(200).json(result);
 };

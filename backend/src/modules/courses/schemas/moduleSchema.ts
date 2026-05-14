@@ -29,3 +29,16 @@ export const updateModuleSchema = z.object({
 });
 
 export type UpdateModuleInput = z.infer<typeof updateModuleSchema>;
+
+export const reorderModulesSchema = z.object({
+  modules: z
+    .array(
+      z.object({
+        id: z.string().min(1, 'El modulo es requerido'),
+        order: z.number().int().min(1, 'El orden debe ser mayor o igual a 1'),
+      }),
+    )
+    .min(1, 'Debes enviar al menos un modulo'),
+});
+
+export type ReorderModulesInput = z.infer<typeof reorderModulesSchema>;

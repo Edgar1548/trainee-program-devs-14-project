@@ -1,14 +1,21 @@
 import { Router } from 'express';
-import { deleteModule, updateModule } from '../controllers/module.controller.js';
+import { deleteModule, reorderModules, updateModule } from '../controllers/module.controller.js';
 import { createModuleLesson, listModuleLessons } from '../controllers/lesson.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { roleMiddleware } from '../middleware/role.middleware.js';
 import { validateMiddleware } from '../middleware/validate.middleware.js';
-import { updateModuleSchema } from '../modules/courses/schemas/moduleSchema.js';
+import { reorderModulesSchema, updateModuleSchema } from '../modules/courses/schemas/moduleSchema.js';
 import { createLessonSchema } from '../modules/lessons/schemas/createLessonSchema.js';
 
 const router = Router();
 
+router.patch(
+  '/reorder',
+  authMiddleware,
+  roleMiddleware(['ADMIN']),
+  validateMiddleware(reorderModulesSchema),
+  reorderModules,
+);
 router.put(
   '/:id',
   authMiddleware,
