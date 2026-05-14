@@ -2,18 +2,36 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCourses } from '@/features/courses';
+import { useDebounce } from '@/shared/hooks';
 import { assignmentUsers } from '../data/assignmentUsers';
 import { AdminSidebar } from './AdminSidebar';
 
 export function CourseAssignmentPanel() {
   const coursesQuery = useCourses({ status: 'ALL', page: 1, pageSize: 100 });
   const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const courses = useMemo(() => coursesQuery.data?.courses ?? [], [coursesQuery.data?.courses]);
   const activeCourseId = selectedCourseId || courses[0]?.id || '';
   const selectedCourse = courses.find((course) => course.id === activeCourseId);
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return assignmentUsers;
+    }
+
+    return assignmentUsers.filter((user) => {
+      return (
+        user.name.toLowerCase().includes(normalizedSearch) ||
+        user.email.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [debouncedSearchTerm]);
 
   return (
     <main className="min-h-svh bg-[var(--bg)]">
@@ -81,6 +99,15 @@ export function CourseAssignmentPanel() {
               </p>
             ) : null}
 
+            <label className="grid max-w-xl gap-2">
+              <span className="font-semibold text-foreground">Buscar usuario</span>
+              <Input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Buscar por nombre o email"
+              />
+            </label>
+
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] border-collapse text-left">
                 <thead>
@@ -92,7 +119,7 @@ export function CourseAssignmentPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {assignmentUsers.map((user) => (
+                  {filteredUsers.map((user) => (
                     <tr key={user.id} className="border-b border-border last:border-b-0">
                       <td className="py-4 pr-4">
                         <p className="font-semibold text-foreground">{user.name}</p>
@@ -109,6 +136,11 @@ export function CourseAssignmentPanel() {
                 </tbody>
               </table>
             </div>
+            {filteredUsers.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                No hay usuarios que coincidan con la busqueda.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
         </section>
