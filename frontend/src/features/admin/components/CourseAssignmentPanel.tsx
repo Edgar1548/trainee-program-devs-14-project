@@ -1,25 +1,29 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCourses } from '@/features/courses';
 import { useDebounce } from '@/shared/hooks';
+import { notify } from '@/shared/providers/notificationEvents';
 import { assignmentUsers } from '../data/assignmentUsers';
 import type { AssignmentUser } from '../types/course-assignment.types';
 import { AdminSidebar } from './AdminSidebar';
+import { UserRow } from './UserRow';
 
 const pageSize = 10;
 
 export function CourseAssignmentPanel() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const coursesQuery = useCourses({ status: 'ALL', page: 1, pageSize: 100 });
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
   const [users, setUsers] = useState<AssignmentUser[]>(assignmentUsers);
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const currentPage = Number(searchParams.get('page') ?? '1') || 1;
 
   const courses = useMemo(() => coursesQuery.data?.courses ?? [], [coursesQuery.data?.courses]);
   const activeCourseId = selectedCourseId || courses[0]?.id || '';
@@ -40,11 +44,21 @@ export function CourseAssignmentPanel() {
   }, [debouncedSearchTerm, users]);
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
-  const paginatedUsers = useMemo(() => {
-    const startIndex = (safeCurrentPage - 1) * pageSize;
+  const visibleUsers = useMemo(() => {
+    const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
+    const nextFilteredUsers = normalizedSearch
+      ? users.filter((user) => {
+          return (
+            user.name.toLowerCase().includes(normalizedSearch) ||
+            user.email.toLowerCase().includes(normalizedSearch)
+          );
+        })
+      : users;
+    const pageForSlice = Math.min(currentPage, Math.max(1, Math.ceil(nextFilteredUsers.length / pageSize)));
+    const startIndex = (pageForSlice - 1) * pageSize;
 
-    return filteredUsers.slice(startIndex, startIndex + pageSize);
-  }, [filteredUsers, safeCurrentPage]);
+    return nextFilteredUsers.slice(startIndex, startIndex + pageSize);
+  }, [currentPage, debouncedSearchTerm, users]);
 
   const selectedCount = selectedUserIds.size;
   const selectedUsers = useMemo(() => {
@@ -52,6 +66,17 @@ export function CourseAssignmentPanel() {
   }, [selectedUserIds, users]);
   const hasAssignableSelection = selectedUsers.some((user) => !user.assignedAt);
   const hasUnassignableSelection = selectedUsers.some((user) => Boolean(user.assignedAt));
+
+  const setPage = useCallback(
+    (page: number) => {
+      setSearchParams((current) => {
+        const nextParams = new URLSearchParams(current);
+        nextParams.set('page', String(page));
+        return nextParams;
+      });
+    },
+    [setSearchParams],
+  );
 
   const toggleUserSelection = useCallback((userId: string) => {
     setSelectedUserIds((current) => {
@@ -67,8 +92,47 @@ export function CourseAssignmentPanel() {
     });
   }, []);
 
+  const handleAssign = useCallback((userId: string) => {
+    const assignedAt = new Date().toISOString();
+
+    setUsers((currentUsers) =>
+      currentUsers.map((user) =>
+        user.id === userId
+          ? {
+              ...user,
+              assignedAt,
+            }
+          : user,
+      ),
+    );
+    notify({
+      title: 'Usuario asignado',
+      description: 'El usuario fue asignado al curso seleccionado.',
+      variant: 'success',
+    });
+  }, []);
+
+  const handleUnassign = useCallback((userId: string) => {
+    setUsers((currentUsers) =>
+      currentUsers.map((user) =>
+        user.id === userId
+          ? {
+              ...user,
+              assignedAt: undefined,
+            }
+          : user,
+      ),
+    );
+    notify({
+      title: 'Usuario desasignado',
+      description: 'El usuario fue removido del curso seleccionado.',
+      variant: 'success',
+    });
+  }, []);
+
   const handleBulkAssign = useCallback(() => {
     const assignedAt = new Date().toISOString();
+    const assignableCount = selectedUsers.filter((user) => !user.assignedAt).length;
 
     setUsers((currentUsers) =>
       currentUsers.map((user) =>
@@ -81,9 +145,16 @@ export function CourseAssignmentPanel() {
       ),
     );
     setSelectedUserIds(new Set());
-  }, [selectedUserIds]);
+    notify({
+      title: 'Usuarios asignados',
+      description: `${assignableCount} ${assignableCount === 1 ? 'usuario fue asignado' : 'usuarios fueron asignados'} correctamente.`,
+      variant: 'success',
+    });
+  }, [selectedUserIds, selectedUsers]);
 
   const handleBulkUnassign = useCallback(() => {
+    const unassignableCount = selectedUsers.filter((user) => Boolean(user.assignedAt)).length;
+
     setUsers((currentUsers) =>
       currentUsers.map((user) => {
         if (!selectedUserIds.has(user.id)) {
@@ -97,7 +168,14 @@ export function CourseAssignmentPanel() {
       }),
     );
     setSelectedUserIds(new Set());
-  }, [selectedUserIds]);
+    notify({
+      title: 'Usuarios desasignados',
+      description: `${unassignableCount} ${
+        unassignableCount === 1 ? 'usuario fue desasignado' : 'usuarios fueron desasignados'
+      } correctamente.`,
+      variant: 'success',
+    });
+  }, [selectedUserIds, selectedUsers]);
 
   return (
     <main className="min-h-svh bg-[var(--bg)]">
@@ -171,7 +249,7 @@ export function CourseAssignmentPanel() {
                 value={searchTerm}
                 onChange={(event) => {
                   setSearchTerm(event.target.value);
-                  setCurrentPage(1);
+                  setPage(1);
                 }}
                 placeholder="Buscar por nombre o email"
               />
@@ -201,50 +279,31 @@ export function CourseAssignmentPanel() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-border text-sm text-muted-foreground">
-                    <th className="py-3 pr-4">Seleccion</th>
-                    <th className="py-3 pr-4">Usuario</th>
-                    <th className="py-3 pr-4">Email</th>
-                    <th className="py-3 pr-4">Estado</th>
-                    <th className="py-3 text-right">Fecha de asignacion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedUsers.map((user) => (
-                    <tr key={user.id} className="border-b border-border last:border-b-0">
-                      <td className="py-4 pr-4">
-                        <input
-                          className="size-5 accent-[var(--accent)]"
-                          type="checkbox"
-                          checked={selectedUserIds.has(user.id)}
-                          onChange={() => toggleUserSelection(user.id)}
-                          aria-label={`Seleccionar ${user.name}`}
-                        />
-                      </td>
-                      <td className="py-4 pr-4">
-                        <p className="font-semibold text-foreground">{user.name}</p>
-                      </td>
-                      <td className="py-4 pr-4">{user.email}</td>
-                      <td className="py-4 pr-4">
-                        <span
-                          className={
-                            user.assignedAt
-                              ? 'rounded-lg bg-primary/10 px-2 py-1 text-sm font-semibold text-primary'
-                              : 'rounded-lg border border-border px-2 py-1 text-sm font-semibold text-muted-foreground'
-                          }
-                        >
-                          {user.assignedAt ? 'Asignado' : 'No asignado'}
-                        </span>
-                      </td>
-                      <td className="py-4 text-right">
-                        {user.assignedAt ? new Date(user.assignedAt).toLocaleDateString('es-PE') : '-'}
-                      </td>
-                    </tr>
+              <Table className="min-w-[860px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Seleccion</TableHead>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Fecha de asignacion</TableHead>
+                    <TableHead className="text-right">Accion</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleUsers.map((user) => (
+                    <UserRow
+                      key={user.id}
+                      user={user}
+                      isSelected={selectedUserIds.has(user.id)}
+                      isCourseSelected={Boolean(activeCourseId)}
+                      onAssign={handleAssign}
+                      onToggleSelection={toggleUserSelection}
+                      onUnassign={handleUnassign}
+                    />
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -256,7 +315,7 @@ export function CourseAssignmentPanel() {
                   type="button"
                   variant="outline"
                   disabled={safeCurrentPage <= 1}
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  onClick={() => setPage(Math.max(1, safeCurrentPage - 1))}
                 >
                   Anterior
                 </Button>
@@ -264,7 +323,7 @@ export function CourseAssignmentPanel() {
                   type="button"
                   variant="outline"
                   disabled={safeCurrentPage >= totalPages}
-                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  onClick={() => setPage(Math.min(totalPages, safeCurrentPage + 1))}
                 >
                   Siguiente
                 </Button>
