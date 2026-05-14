@@ -47,9 +47,14 @@ export function AdminCoursesPage() {
               Cursos
             </h1>
           </div>
-          <Button asChild>
-            <Link to="/admin/courses/new">Crear nuevo curso</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link to="/admin/dashboard">Volver al dashboard</Link>
+            </Button>
+            <Button asChild>
+              <Link to="/admin/courses/new">Crear nuevo curso</Link>
+            </Button>
+          </div>
         </div>
 
         <Card>

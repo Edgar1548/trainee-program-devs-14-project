@@ -1,7 +1,7 @@
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDashboardStats } from '../hooks/useDashboardStats';
+import { AdminSidebar } from './AdminSidebar';
 import { QuickActions } from './QuickActions';
 import { RecentActivityList } from './RecentActivityList';
 import { StatsCard } from './StatsCard';
@@ -40,22 +40,7 @@ export function AdminDashboard() {
   return (
     <main className="min-h-svh bg-[var(--bg)]">
       <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 md:px-6 lg:grid-cols-[240px_1fr]">
-        <aside className="rounded-lg border border-border bg-background p-4 lg:sticky lg:top-6 lg:h-[calc(100svh-48px)]">
-          <Link to="/admin/dashboard" className="block text-lg font-bold text-foreground no-underline">
-            LearnPath Admin
-          </Link>
-          <nav className="mt-6 grid gap-2" aria-label="Administracion">
-            <Link className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground no-underline" to="/admin/dashboard">
-              Dashboard
-            </Link>
-            <Link className="rounded-lg px-3 py-2 text-sm font-semibold text-foreground no-underline hover:bg-primary/10" to="/admin/courses/new">
-              Cursos
-            </Link>
-            <Link className="rounded-lg px-3 py-2 text-sm font-semibold text-foreground no-underline hover:bg-primary/10" to="/admin/users">
-              Usuarios
-            </Link>
-          </nav>
-        </aside>
+        <AdminSidebar />
 
         <section className="grid gap-6" aria-labelledby="admin-dashboard-title">
           <div className="grid gap-2">

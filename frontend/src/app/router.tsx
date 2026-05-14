@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { AdminDashboard } from '@/features/admin';
+import { AdminDashboard, CourseAssignmentPanel } from '@/features/admin';
 import { ProtectedRoute, RoleGuard } from '@/features/auth';
 import { AdminCourseCreatePage, AdminCourseEditPage, AdminCoursesPage } from '@/features/courses';
 import { Home, Login, Register, Unauthorized } from '@/pages';
@@ -15,14 +15,6 @@ function Courses() {
 
 function LearningPaths() {
   return <h1>Rutas de aprendizaje</h1>;
-}
-
-function AdminPlaceholder({ title }: { title: string }) {
-  return (
-    <main className="page-placeholder">
-      <h1>{title}</h1>
-    </main>
-  );
 }
 
 export function AppRouter() {
@@ -93,7 +85,14 @@ export function AppRouter() {
               </SectionErrorBoundary>
             }
           />
-          <Route path="/admin/users" element={<AdminPlaceholder title="Gestionar usuarios" />} />
+          <Route
+            path="/admin/users"
+            element={
+              <SectionErrorBoundary name="CourseAssignmentPanel" fallbackVariant="card">
+                <CourseAssignmentPanel />
+              </SectionErrorBoundary>
+            }
+          />
         </Route>
       </Route>
 
