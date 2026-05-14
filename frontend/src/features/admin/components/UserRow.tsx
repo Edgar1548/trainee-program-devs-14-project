@@ -8,7 +8,7 @@ type UserRowProps = {
   isSelected: boolean;
   isCourseSelected: boolean;
   onAssign: (userId: string) => void;
-  onToggleSelection: (userId: string) => void;
+  onToggleSelection: (user: AssignmentUser) => void;
   onUnassign: (userId: string) => void;
 };
 
@@ -29,7 +29,7 @@ function UserRowComponent({
           className="size-5 accent-[var(--accent)]"
           type="checkbox"
           checked={isSelected}
-          onChange={() => onToggleSelection(user.id)}
+          onChange={() => onToggleSelection(user)}
           aria-label={`Seleccionar ${user.name}`}
         />
       </TableCell>

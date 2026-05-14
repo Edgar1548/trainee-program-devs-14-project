@@ -4,12 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCourses } from '@/features/courses';
 import { useDebounce } from '@/shared/hooks';
 import { notify } from '@/shared/providers/notificationEvents';
-import { assignmentUsers } from '../data/assignmentUsers';
-import { useAssignCourse, useCourseEnrollments, useUnassignCourse } from '../hooks/useCourseAssignments';
+import { useAssignableUsers, useAssignCourse, useUnassignCourse } from '../hooks/useCourseAssignments';
 import type { AssignmentUser } from '../types/course-assignment.types';
 import { AdminSidebar } from './AdminSidebar';
 import { UserRow } from './UserRow';
@@ -22,80 +21,28 @@ export function CourseAssignmentPanel() {
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
-  const [users, setUsers] = useState<AssignmentUser[]>(assignmentUsers);
+  const [selectedUsersById, setSelectedUsersById] = useState<Map<string, AssignmentUser>>(() => new Map());
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const currentPage = Number(searchParams.get('page') ?? '1') || 1;
 
   const courses = useMemo(() => coursesQuery.data?.courses ?? [], [coursesQuery.data?.courses]);
   const activeCourseId = selectedCourseId || courses[0]?.id || '';
   const selectedCourse = courses.find((course) => course.id === activeCourseId);
-  const enrollmentsQuery = useCourseEnrollments(activeCourseId);
+  const assignableUsersQuery = useAssignableUsers(activeCourseId, {
+    search: debouncedSearchTerm,
+    page: currentPage,
+    limit: pageSize,
+  });
   const assignCourse = useAssignCourse(activeCourseId);
   const unassignCourse = useUnassignCourse(activeCourseId);
-  const usersWithEnrollments = useMemo(() => {
-    if (!enrollmentsQuery.data) {
-      return users;
-    }
-
-    const enrolledUsers = new Map(enrollmentsQuery.data.map((user) => [user.id, user]));
-
-    return users.map((user) => {
-      const enrolledUser = enrolledUsers.get(user.id);
-
-      return enrolledUser
-        ? {
-            ...user,
-            assignedAt: enrolledUser.assignedAt,
-            enrollmentId: enrolledUser.enrollmentId,
-            enrollmentStatus: enrolledUser.enrollmentStatus,
-            progress: enrolledUser.progress,
-          }
-        : {
-            ...user,
-            assignedAt: undefined,
-            enrollmentId: undefined,
-            enrollmentStatus: undefined,
-            progress: undefined,
-          };
-    });
-  }, [enrollmentsQuery.data, users]);
-
-  const filteredUsers = useMemo(() => {
-    const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
-
-    if (!normalizedSearch) {
-      return usersWithEnrollments;
-    }
-
-    return usersWithEnrollments.filter((user) => {
-      return (
-        user.name.toLowerCase().includes(normalizedSearch) ||
-        user.email.toLowerCase().includes(normalizedSearch)
-      );
-    });
-  }, [debouncedSearchTerm, usersWithEnrollments]);
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const visibleUsers = useMemo(() => {
-    const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
-    const nextFilteredUsers = normalizedSearch
-      ? usersWithEnrollments.filter((user) => {
-          return (
-            user.name.toLowerCase().includes(normalizedSearch) ||
-            user.email.toLowerCase().includes(normalizedSearch)
-          );
-        })
-      : usersWithEnrollments;
-    const pageForSlice = Math.min(currentPage, Math.max(1, Math.ceil(nextFilteredUsers.length / pageSize)));
-    const startIndex = (pageForSlice - 1) * pageSize;
-
-    return nextFilteredUsers.slice(startIndex, startIndex + pageSize);
-  }, [currentPage, debouncedSearchTerm, usersWithEnrollments]);
+  const visibleUsers = assignableUsersQuery.data?.users ?? [];
+  const totalPages = assignableUsersQuery.data?.totalPages ?? 1;
+  const safeCurrentPage = assignableUsersQuery.data?.currentPage ?? Math.min(currentPage, totalPages);
 
   const selectedCount = selectedUserIds.size;
   const selectedUsers = useMemo(() => {
-    return usersWithEnrollments.filter((user) => selectedUserIds.has(user.id));
-  }, [selectedUserIds, usersWithEnrollments]);
+    return Array.from(selectedUsersById.values()).filter((user) => selectedUserIds.has(user.id));
+  }, [selectedUserIds, selectedUsersById]);
   const hasAssignableSelection = selectedUsers.some((user) => !user.assignedAt);
   const hasUnassignableSelection = selectedUsers.some((user) => Boolean(user.assignedAt));
 
@@ -110,35 +57,45 @@ export function CourseAssignmentPanel() {
     [setSearchParams],
   );
 
-  const toggleUserSelection = useCallback((userId: string) => {
+  const toggleUserSelection = useCallback((user: AssignmentUser) => {
     setSelectedUserIds((current) => {
       const nextSelection = new Set(current);
 
-      if (nextSelection.has(userId)) {
-        nextSelection.delete(userId);
+      if (nextSelection.has(user.id)) {
+        nextSelection.delete(user.id);
       } else {
-        nextSelection.add(userId);
+        nextSelection.add(user.id);
       }
 
       return nextSelection;
     });
+    setSelectedUsersById((current) => {
+      const nextUsers = new Map(current);
+
+      if (nextUsers.has(user.id)) {
+        nextUsers.delete(user.id);
+      } else {
+        nextUsers.set(user.id, user);
+      }
+
+      return nextUsers;
+    });
   }, []);
 
-  const handleAssign = useCallback((userId: string) => {
-    const assignedAt = new Date().toISOString();
+  const handleCourseChange = useCallback(
+    (courseId: string) => {
+      setSelectedCourseId(courseId);
+      setSelectedUserIds(new Set());
+      setSelectedUsersById(new Map());
+      setPage(1);
+    },
+    [setPage],
+  );
 
-    setUsers((currentUsers) =>
-      currentUsers.map((user) =>
-        user.id === userId
-          ? {
-              ...user,
-              assignedAt,
-            }
-          : user,
-      ),
-    );
+  const handleAssign = useCallback((userId: string) => {
     assignCourse.mutate(userId, {
       onSuccess: () => {
+        void assignableUsersQuery.refetch();
         notify({
           title: 'Usuario asignado',
           description: 'El usuario fue asignado al curso seleccionado.',
@@ -153,21 +110,12 @@ export function CourseAssignmentPanel() {
         });
       },
     });
-  }, [assignCourse]);
+  }, [assignCourse, assignableUsersQuery]);
 
   const handleUnassign = useCallback((userId: string) => {
-    setUsers((currentUsers) =>
-      currentUsers.map((user) =>
-        user.id === userId
-          ? {
-              ...user,
-              assignedAt: undefined,
-            }
-          : user,
-      ),
-    );
     unassignCourse.mutate(userId, {
       onSuccess: () => {
+        void assignableUsersQuery.refetch();
         notify({
           title: 'Usuario desasignado',
           description: 'El usuario fue removido del curso seleccionado.',
@@ -182,25 +130,16 @@ export function CourseAssignmentPanel() {
         });
       },
     });
-  }, [unassignCourse]);
+  }, [assignableUsersQuery, unassignCourse]);
 
   const handleBulkAssign = useCallback(() => {
-    const assignedAt = new Date().toISOString();
     const assignableCount = selectedUsers.filter((user) => !user.assignedAt).length;
 
-    setUsers((currentUsers) =>
-      currentUsers.map((user) =>
-        selectedUserIds.has(user.id)
-          ? {
-              ...user,
-              assignedAt,
-            }
-          : user,
-      ),
-    );
     setSelectedUserIds(new Set());
+    setSelectedUsersById(new Map());
     Promise.all(selectedUsers.filter((user) => !user.assignedAt).map((user) => assignCourse.mutateAsync(user.id)))
       .then(() => {
+        void assignableUsersQuery.refetch();
         notify({
           title: 'Usuarios asignados',
           description: `${assignableCount} ${assignableCount === 1 ? 'usuario fue asignado' : 'usuarios fueron asignados'} correctamente.`,
@@ -214,26 +153,16 @@ export function CourseAssignmentPanel() {
           variant: 'info',
         });
       });
-  }, [assignCourse, selectedUserIds, selectedUsers]);
+  }, [assignCourse, assignableUsersQuery, selectedUsers]);
 
   const handleBulkUnassign = useCallback(() => {
     const unassignableCount = selectedUsers.filter((user) => Boolean(user.assignedAt)).length;
 
-    setUsers((currentUsers) =>
-      currentUsers.map((user) => {
-        if (!selectedUserIds.has(user.id)) {
-          return user;
-        }
-
-        return {
-          ...user,
-          assignedAt: undefined,
-        };
-      }),
-    );
     setSelectedUserIds(new Set());
+    setSelectedUsersById(new Map());
     Promise.all(selectedUsers.filter((user) => user.assignedAt).map((user) => unassignCourse.mutateAsync(user.id)))
       .then(() => {
+        void assignableUsersQuery.refetch();
         notify({
           title: 'Usuarios desasignados',
           description: `${unassignableCount} ${
@@ -249,7 +178,7 @@ export function CourseAssignmentPanel() {
           variant: 'info',
         });
       });
-  }, [selectedUserIds, selectedUsers, unassignCourse]);
+  }, [assignableUsersQuery, selectedUsers, unassignCourse]);
 
   return (
     <main className="min-h-svh bg-[var(--bg)]">
@@ -289,7 +218,7 @@ export function CourseAssignmentPanel() {
                 <select
                   className="h-10 rounded-lg border border-input bg-background px-3 text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   value={activeCourseId}
-                  onChange={(event) => setSelectedCourseId(event.target.value)}
+                  onChange={(event) => handleCourseChange(event.target.value)}
                 >
                   {courses.map((course) => (
                     <option key={course.id} value={course.id}>
@@ -316,9 +245,9 @@ export function CourseAssignmentPanel() {
                 Mostrando usuarios disponibles para asignar a {selectedCourse.title}.
               </p>
             ) : null}
-            {enrollmentsQuery.error ? (
+            {assignableUsersQuery.error ? (
               <p className="rounded-lg border border-border bg-[var(--bg)] p-3 text-sm text-muted-foreground">
-                Los endpoints de asignacion todavia no estan disponibles; se muestra el estado local de la interfaz.
+                No pudimos cargar los usuarios disponibles. Revisa la conexion con el API e intenta nuevamente.
               </p>
             ) : null}
 
@@ -370,17 +299,25 @@ export function CourseAssignmentPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleUsers.map((user) => (
-                    <UserRow
-                      key={user.id}
-                      user={user}
-                      isSelected={selectedUserIds.has(user.id)}
-                      isCourseSelected={Boolean(activeCourseId)}
-                      onAssign={handleAssign}
-                      onToggleSelection={toggleUserSelection}
-                      onUnassign={handleUnassign}
-                    />
-                  ))}
+                      {assignableUsersQuery.isLoading
+                    ? Array.from({ length: pageSize }).map((_, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="p-4" colSpan={6}>
+                            <Skeleton className="h-8 w-full" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    : visibleUsers.map((user) => (
+                        <UserRow
+                          key={user.id}
+                          user={user}
+                          isSelected={selectedUserIds.has(user.id)}
+                          isCourseSelected={Boolean(activeCourseId)}
+                          onAssign={handleAssign}
+                          onToggleSelection={toggleUserSelection}
+                          onUnassign={handleUnassign}
+                        />
+                      ))}
                 </TableBody>
               </Table>
             </div>
@@ -408,7 +345,7 @@ export function CourseAssignmentPanel() {
                 </Button>
               </div>
             </div>
-            {filteredUsers.length === 0 ? (
+            {!assignableUsersQuery.isLoading && visibleUsers.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
                 No hay usuarios que coincidan con la busqueda.
               </p>
