@@ -1,11 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { notify } from '@/shared/providers/notificationEvents';
 import { CourseForm } from '../components/CourseForm';
 import { ModuleAccordion } from '../components/ModuleAccordion';
-import { useCourse, useUpdateCourse } from '../hooks/useCourses';
+import { coursesQueryKey, useCourse, useUpdateCourse } from '../hooks/useCourses';
+import { useCreateLesson, useDeleteLesson, useReorderLessons, useUpdateLesson } from '../hooks/useLessons';
 import type { CourseFormData } from '../schemas/course.schema';
 import type { CourseDetail } from '../types/course.types';
 
@@ -47,8 +50,13 @@ const normalizeModulesOrder = (modules: CourseDetail['modules']): CourseDetail['
 
 export function AdminCourseEditPage() {
   const { courseId } = useParams();
+  const queryClient = useQueryClient();
   const courseQuery = useCourse(courseId);
   const updateCourse = useUpdateCourse(courseId ?? '');
+  const createLesson = useCreateLesson(courseId ?? '');
+  const updateLesson = useUpdateLesson(courseId ?? '');
+  const deleteLesson = useDeleteLesson(courseId ?? '');
+  const reorderLessons = useReorderLessons(courseId ?? '');
   const [formError, setFormError] = useState<string | null>(null);
 
   if (!courseId) {
@@ -75,6 +83,10 @@ export function AdminCourseEditPage() {
     }
   };
 
+  const updateCourseCache = (nextCourse: CourseDetail) => {
+    queryClient.setQueryData<CourseDetail>([...coursesQueryKey, courseId], nextCourse);
+  };
+
   const handleReorderModules = (sourceModuleId: string, targetModuleId: string) => {
     if (!courseQuery.data) {
       return;
@@ -91,7 +103,7 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const nextCourse = {
       ...courseQuery.data,
       modules: courseQuery.data.modules.map((module) =>
         module.id === moduleId
@@ -101,6 +113,16 @@ export function AdminCourseEditPage() {
             }
           : module,
       ),
+    };
+    const nextModule = nextCourse.modules.find((module) => module.id === moduleId);
+
+    updateCourseCache(nextCourse);
+    void reorderLessons.mutateAsync({ moduleId, lessons: nextModule?.lessons ?? [] }).catch(() => {
+      notify({
+        title: 'Reordenamiento pendiente de API',
+        description: 'La UI se actualizo localmente, pero el endpoint de reordenamiento de lecciones aun no respondio correctamente.',
+        variant: 'info',
+      });
     });
   };
 
@@ -127,7 +149,10 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const currentLesson = courseQuery.data.modules
+      .find((module) => module.id === moduleId)
+      ?.lessons.find((lesson) => lesson.id === lessonId);
+    const nextCourse = {
       ...courseQuery.data,
       modules: courseQuery.data.modules.map((module) =>
         module.id === moduleId
@@ -144,7 +169,22 @@ export function AdminCourseEditPage() {
             }
           : module,
       ),
-    });
+    };
+
+    updateCourseCache(nextCourse);
+    void updateLesson
+      .mutateAsync({
+        lessonId,
+        title,
+        content: currentLesson?.content ?? '{"blocks":[]}',
+      })
+      .catch(() => {
+        notify({
+          title: 'Edicion pendiente de API',
+          description: 'La UI se actualizo localmente, pero el endpoint de actualizacion de lecciones aun no respondio correctamente.',
+          variant: 'info',
+        });
+      });
   };
 
   const handleAddModule = () => {
@@ -171,7 +211,9 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const title = 'Nueva leccion';
+    const content = '{"blocks":[]}';
+    const nextCourse = {
       ...courseQuery.data,
       modules: normalizeModulesOrder(
         courseQuery.data.modules.map((module) =>
@@ -181,8 +223,8 @@ export function AdminCourseEditPage() {
                 lessons: [
                   ...module.lessons,
                   {
-                    title: 'Nueva leccion',
-                    content: '{"blocks":[]}',
+                    title,
+                    content,
                     order: module.lessons.length + 1,
                   },
                 ],
@@ -190,6 +232,15 @@ export function AdminCourseEditPage() {
             : module,
         ),
       ),
+    };
+
+    updateCourseCache(nextCourse);
+    void createLesson.mutateAsync({ moduleId, title, content }).catch(() => {
+      notify({
+        title: 'Creacion pendiente de API',
+        description: 'La UI se actualizo localmente, pero el endpoint de creacion de lecciones aun no respondio correctamente.',
+        variant: 'info',
+      });
     });
   };
 
@@ -209,7 +260,7 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const nextCourse = {
       ...courseQuery.data,
       modules: normalizeModulesOrder(
         courseQuery.data.modules.map((module) => ({
@@ -217,6 +268,15 @@ export function AdminCourseEditPage() {
           lessons: module.lessons.filter((lesson) => lesson.id !== lessonId),
         })),
       ),
+    };
+
+    updateCourseCache(nextCourse);
+    void deleteLesson.mutateAsync(lessonId).catch(() => {
+      notify({
+        title: 'Eliminacion pendiente de API',
+        description: 'La UI se actualizo localmente, pero el endpoint de eliminacion de lecciones aun no respondio correctamente.',
+        variant: 'info',
+      });
     });
   };
 
@@ -267,7 +327,13 @@ export function AdminCourseEditPage() {
               <CardContent>
                 <ModuleAccordion
                   modules={courseQuery.data.modules}
-                  isSaving={updateCourse.isPending}
+                  isSaving={
+                    updateCourse.isPending ||
+                    createLesson.isPending ||
+                    updateLesson.isPending ||
+                    deleteLesson.isPending ||
+                    reorderLessons.isPending
+                  }
                   onAddModule={handleAddModule}
                   onAddLesson={handleAddLesson}
                   onDeleteModule={handleDeleteModule}

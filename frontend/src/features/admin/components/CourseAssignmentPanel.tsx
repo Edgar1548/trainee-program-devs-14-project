@@ -9,6 +9,7 @@ import { useCourses } from '@/features/courses';
 import { useDebounce } from '@/shared/hooks';
 import { notify } from '@/shared/providers/notificationEvents';
 import { assignmentUsers } from '../data/assignmentUsers';
+import { useAssignCourse, useCourseEnrollments, useUnassignCourse } from '../hooks/useCourseAssignments';
 import type { AssignmentUser } from '../types/course-assignment.types';
 import { AdminSidebar } from './AdminSidebar';
 import { UserRow } from './UserRow';
@@ -28,42 +29,73 @@ export function CourseAssignmentPanel() {
   const courses = useMemo(() => coursesQuery.data?.courses ?? [], [coursesQuery.data?.courses]);
   const activeCourseId = selectedCourseId || courses[0]?.id || '';
   const selectedCourse = courses.find((course) => course.id === activeCourseId);
+  const enrollmentsQuery = useCourseEnrollments(activeCourseId);
+  const assignCourse = useAssignCourse(activeCourseId);
+  const unassignCourse = useUnassignCourse(activeCourseId);
+  const usersWithEnrollments = useMemo(() => {
+    if (!enrollmentsQuery.data) {
+      return users;
+    }
+
+    const enrolledUsers = new Map(enrollmentsQuery.data.map((user) => [user.id, user]));
+
+    return users.map((user) => {
+      const enrolledUser = enrolledUsers.get(user.id);
+
+      return enrolledUser
+        ? {
+            ...user,
+            assignedAt: enrolledUser.assignedAt,
+            enrollmentId: enrolledUser.enrollmentId,
+            enrollmentStatus: enrolledUser.enrollmentStatus,
+            progress: enrolledUser.progress,
+          }
+        : {
+            ...user,
+            assignedAt: undefined,
+            enrollmentId: undefined,
+            enrollmentStatus: undefined,
+            progress: undefined,
+          };
+    });
+  }, [enrollmentsQuery.data, users]);
+
   const filteredUsers = useMemo(() => {
     const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
 
     if (!normalizedSearch) {
-      return users;
+      return usersWithEnrollments;
     }
 
-    return users.filter((user) => {
+    return usersWithEnrollments.filter((user) => {
       return (
         user.name.toLowerCase().includes(normalizedSearch) ||
         user.email.toLowerCase().includes(normalizedSearch)
       );
     });
-  }, [debouncedSearchTerm, users]);
+  }, [debouncedSearchTerm, usersWithEnrollments]);
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const visibleUsers = useMemo(() => {
     const normalizedSearch = debouncedSearchTerm.trim().toLowerCase();
     const nextFilteredUsers = normalizedSearch
-      ? users.filter((user) => {
+      ? usersWithEnrollments.filter((user) => {
           return (
             user.name.toLowerCase().includes(normalizedSearch) ||
             user.email.toLowerCase().includes(normalizedSearch)
           );
         })
-      : users;
+      : usersWithEnrollments;
     const pageForSlice = Math.min(currentPage, Math.max(1, Math.ceil(nextFilteredUsers.length / pageSize)));
     const startIndex = (pageForSlice - 1) * pageSize;
 
     return nextFilteredUsers.slice(startIndex, startIndex + pageSize);
-  }, [currentPage, debouncedSearchTerm, users]);
+  }, [currentPage, debouncedSearchTerm, usersWithEnrollments]);
 
   const selectedCount = selectedUserIds.size;
   const selectedUsers = useMemo(() => {
-    return users.filter((user) => selectedUserIds.has(user.id));
-  }, [selectedUserIds, users]);
+    return usersWithEnrollments.filter((user) => selectedUserIds.has(user.id));
+  }, [selectedUserIds, usersWithEnrollments]);
   const hasAssignableSelection = selectedUsers.some((user) => !user.assignedAt);
   const hasUnassignableSelection = selectedUsers.some((user) => Boolean(user.assignedAt));
 
@@ -105,12 +137,23 @@ export function CourseAssignmentPanel() {
           : user,
       ),
     );
-    notify({
-      title: 'Usuario asignado',
-      description: 'El usuario fue asignado al curso seleccionado.',
-      variant: 'success',
+    assignCourse.mutate(userId, {
+      onSuccess: () => {
+        notify({
+          title: 'Usuario asignado',
+          description: 'El usuario fue asignado al curso seleccionado.',
+          variant: 'success',
+        });
+      },
+      onError: () => {
+        notify({
+          title: 'Asignacion pendiente de API',
+          description: 'La UI quedo actualizada localmente, pero el endpoint de asignacion aun no respondio correctamente.',
+          variant: 'info',
+        });
+      },
     });
-  }, []);
+  }, [assignCourse]);
 
   const handleUnassign = useCallback((userId: string) => {
     setUsers((currentUsers) =>
@@ -123,12 +166,23 @@ export function CourseAssignmentPanel() {
           : user,
       ),
     );
-    notify({
-      title: 'Usuario desasignado',
-      description: 'El usuario fue removido del curso seleccionado.',
-      variant: 'success',
+    unassignCourse.mutate(userId, {
+      onSuccess: () => {
+        notify({
+          title: 'Usuario desasignado',
+          description: 'El usuario fue removido del curso seleccionado.',
+          variant: 'success',
+        });
+      },
+      onError: () => {
+        notify({
+          title: 'Desasignacion pendiente de API',
+          description: 'La UI quedo actualizada localmente, pero el endpoint de desasignacion aun no respondio correctamente.',
+          variant: 'info',
+        });
+      },
     });
-  }, []);
+  }, [unassignCourse]);
 
   const handleBulkAssign = useCallback(() => {
     const assignedAt = new Date().toISOString();
@@ -145,12 +199,22 @@ export function CourseAssignmentPanel() {
       ),
     );
     setSelectedUserIds(new Set());
-    notify({
-      title: 'Usuarios asignados',
-      description: `${assignableCount} ${assignableCount === 1 ? 'usuario fue asignado' : 'usuarios fueron asignados'} correctamente.`,
-      variant: 'success',
-    });
-  }, [selectedUserIds, selectedUsers]);
+    Promise.all(selectedUsers.filter((user) => !user.assignedAt).map((user) => assignCourse.mutateAsync(user.id)))
+      .then(() => {
+        notify({
+          title: 'Usuarios asignados',
+          description: `${assignableCount} ${assignableCount === 1 ? 'usuario fue asignado' : 'usuarios fueron asignados'} correctamente.`,
+          variant: 'success',
+        });
+      })
+      .catch(() => {
+        notify({
+          title: 'Asignaciones pendientes de API',
+          description: 'La UI quedo actualizada localmente, pero el endpoint de asignacion aun no respondio correctamente.',
+          variant: 'info',
+        });
+      });
+  }, [assignCourse, selectedUserIds, selectedUsers]);
 
   const handleBulkUnassign = useCallback(() => {
     const unassignableCount = selectedUsers.filter((user) => Boolean(user.assignedAt)).length;
@@ -168,14 +232,24 @@ export function CourseAssignmentPanel() {
       }),
     );
     setSelectedUserIds(new Set());
-    notify({
-      title: 'Usuarios desasignados',
-      description: `${unassignableCount} ${
-        unassignableCount === 1 ? 'usuario fue desasignado' : 'usuarios fueron desasignados'
-      } correctamente.`,
-      variant: 'success',
-    });
-  }, [selectedUserIds, selectedUsers]);
+    Promise.all(selectedUsers.filter((user) => user.assignedAt).map((user) => unassignCourse.mutateAsync(user.id)))
+      .then(() => {
+        notify({
+          title: 'Usuarios desasignados',
+          description: `${unassignableCount} ${
+            unassignableCount === 1 ? 'usuario fue desasignado' : 'usuarios fueron desasignados'
+          } correctamente.`,
+          variant: 'success',
+        });
+      })
+      .catch(() => {
+        notify({
+          title: 'Desasignaciones pendientes de API',
+          description: 'La UI quedo actualizada localmente, pero el endpoint de desasignacion aun no respondio correctamente.',
+          variant: 'info',
+        });
+      });
+  }, [selectedUserIds, selectedUsers, unassignCourse]);
 
   return (
     <main className="min-h-svh bg-[var(--bg)]">
@@ -240,6 +314,11 @@ export function CourseAssignmentPanel() {
             {selectedCourse ? (
               <p className="text-sm text-muted-foreground">
                 Mostrando usuarios disponibles para asignar a {selectedCourse.title}.
+              </p>
+            ) : null}
+            {enrollmentsQuery.error ? (
+              <p className="rounded-lg border border-border bg-[var(--bg)] p-3 text-sm text-muted-foreground">
+                Los endpoints de asignacion todavia no estan disponibles; se muestra el estado local de la interfaz.
               </p>
             ) : null}
 

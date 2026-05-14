@@ -4,5 +4,6 @@ export * from './pages/AdminCoursesPage';
 export * from './components/CourseForm';
 export * from './components/ModuleAccordion';
 export * from './hooks/useCourses';
+export * from './hooks/useLessons';
 export * from './schemas/course.schema';
 export type * from './types/course.types';
