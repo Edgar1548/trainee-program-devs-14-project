@@ -91,6 +91,58 @@ const assignCourse = async (courseId: string, input: AssignCourseInput) => {
   });
 };
 
+const unassignCourse = async (courseId: string, userId: string) => {
+  const [course, user] = await Promise.all([
+    prisma.course.findUnique({
+      where: {
+        id: courseId,
+      },
+      select: {
+        id: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+      },
+    }),
+  ]);
+
+  if (!course) {
+    throw new NotFoundError('Curso no encontrado');
+  }
+
+  if (!user) {
+    throw new NotFoundError('Usuario no encontrado');
+  }
+
+  const enrollment = await prisma.enrollment.findUnique({
+    where: {
+      userId_courseId: {
+        userId,
+        courseId,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!enrollment) {
+    throw new NotFoundError('Asignacion no encontrada');
+  }
+
+  await prisma.enrollment.delete({
+    where: {
+      id: enrollment.id,
+    },
+  });
+};
+
 export const assignmentService = {
   assignCourse,
+  unassignCourse,
 };

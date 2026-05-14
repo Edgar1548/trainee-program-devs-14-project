@@ -10,3 +10,12 @@ export const assignCourse = async (
 
   return res.status(201).json(result);
 };
+
+export const unassignCourse = async (
+  req: Request<{ courseId: string; userId: string }>,
+  res: Response,
+) => {
+  await assignmentService.unassignCourse(req.params.courseId, req.params.userId);
+
+  return res.status(204).send();
+};

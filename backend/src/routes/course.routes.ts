@@ -6,7 +6,7 @@ import {
   listCourses,
   updateCourse,
 } from '../controllers/course.controller.js';
-import { assignCourse } from '../controllers/assignment.controller.js';
+import { assignCourse, unassignCourse } from '../controllers/assignment.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { roleMiddleware } from '../middleware/role.middleware.js';
 import { validateMiddleware } from '../middleware/validate.middleware.js';
@@ -25,6 +25,7 @@ router.post(
   validateMiddleware(assignCourseSchema),
   assignCourse,
 );
+router.delete('/:courseId/assign/:userId', authMiddleware, roleMiddleware(['ADMIN']), unassignCourse);
 router.get('/:id', getCourseById);
 router.put('/:id', authMiddleware, roleMiddleware(['ADMIN']), validateMiddleware(updateCourseSchema), updateCourse);
 router.delete('/:id', authMiddleware, roleMiddleware(['ADMIN']), deleteCourse);
