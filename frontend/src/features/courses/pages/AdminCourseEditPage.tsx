@@ -9,6 +9,7 @@ import { CourseForm } from '../components/CourseForm';
 import { ModuleAccordion } from '../components/ModuleAccordion';
 import { coursesQueryKey, useCourse, useUpdateCourse } from '../hooks/useCourses';
 import { useCreateLesson, useDeleteLesson, useReorderLessons, useUpdateLesson } from '../hooks/useLessons';
+import { useCreateModule, useDeleteModule, useReorderModules, useUpdateModule } from '../hooks/useModules';
 import type { CourseFormData } from '../schemas/course.schema';
 import type { CourseDetail } from '../types/course.types';
 
@@ -53,6 +54,10 @@ export function AdminCourseEditPage() {
   const queryClient = useQueryClient();
   const courseQuery = useCourse(courseId);
   const updateCourse = useUpdateCourse(courseId ?? '');
+  const createModule = useCreateModule(courseId ?? '');
+  const updateModule = useUpdateModule(courseId ?? '');
+  const deleteModule = useDeleteModule(courseId ?? '');
+  const reorderModules = useReorderModules(courseId ?? '');
   const createLesson = useCreateLesson(courseId ?? '');
   const updateLesson = useUpdateLesson(courseId ?? '');
   const deleteLesson = useDeleteLesson(courseId ?? '');
@@ -73,16 +78,6 @@ export function AdminCourseEditPage() {
     }
   };
 
-  const persistCourseStructure = async (nextCourse: CourseDetail) => {
-    setFormError(null);
-
-    try {
-      await updateCourse.mutateAsync(toFormData(nextCourse));
-    } catch {
-      setFormError('No pudimos guardar la estructura del curso. Intenta nuevamente.');
-    }
-  };
-
   const updateCourseCache = (nextCourse: CourseDetail) => {
     queryClient.setQueryData<CourseDetail>([...coursesQueryKey, courseId], nextCourse);
   };
@@ -92,9 +87,18 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const nextCourse = {
       ...courseQuery.data,
       modules: reorderById(courseQuery.data.modules, sourceModuleId, targetModuleId),
+    };
+
+    updateCourseCache(nextCourse);
+    void reorderModules.mutateAsync({ modules: nextCourse.modules }).catch(() => {
+      notify({
+        title: 'No pudimos reordenar los modulos',
+        description: 'La UI se actualizo localmente, pero el servidor rechazo el nuevo orden.',
+        variant: 'info',
+      });
     });
   };
 
@@ -131,7 +135,8 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const currentModule = courseQuery.data.modules.find((module) => module.id === moduleId);
+    const nextCourse = {
       ...courseQuery.data,
       modules: courseQuery.data.modules.map((module) =>
         module.id === moduleId
@@ -141,7 +146,22 @@ export function AdminCourseEditPage() {
             }
           : module,
       ),
-    });
+    };
+
+    updateCourseCache(nextCourse);
+    void updateModule
+      .mutateAsync({
+        moduleId,
+        title,
+        description: currentModule?.description,
+      })
+      .catch(() => {
+        notify({
+          title: 'No pudimos actualizar el modulo',
+          description: 'La UI se actualizo localmente, pero el servidor rechazo el cambio.',
+          variant: 'info',
+        });
+      });
   };
 
   const handleUpdateLessonTitle = (moduleId: string, lessonId: string, title: string) => {
@@ -192,7 +212,7 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const nextCourse = {
       ...courseQuery.data,
       modules: normalizeModulesOrder([
         ...courseQuery.data.modules,
@@ -203,6 +223,15 @@ export function AdminCourseEditPage() {
           lessons: [],
         },
       ]),
+    };
+
+    updateCourseCache(nextCourse);
+    void createModule.mutateAsync({ title: 'Nuevo modulo', description: '' }).catch(() => {
+      notify({
+        title: 'No pudimos crear el modulo',
+        description: 'La UI se actualizo localmente, pero el servidor rechazo la creacion.',
+        variant: 'info',
+      });
     });
   };
 
@@ -249,9 +278,18 @@ export function AdminCourseEditPage() {
       return;
     }
 
-    void persistCourseStructure({
+    const nextCourse = {
       ...courseQuery.data,
       modules: normalizeModulesOrder(courseQuery.data.modules.filter((module) => module.id !== moduleId)),
+    };
+
+    updateCourseCache(nextCourse);
+    void deleteModule.mutateAsync(moduleId).catch(() => {
+      notify({
+        title: 'No pudimos eliminar el modulo',
+        description: 'La UI se actualizo localmente, pero el servidor rechazo la eliminacion.',
+        variant: 'info',
+      });
     });
   };
 
@@ -329,6 +367,10 @@ export function AdminCourseEditPage() {
                   modules={courseQuery.data.modules}
                   isSaving={
                     updateCourse.isPending ||
+                    createModule.isPending ||
+                    updateModule.isPending ||
+                    deleteModule.isPending ||
+                    reorderModules.isPending ||
                     createLesson.isPending ||
                     updateLesson.isPending ||
                     deleteLesson.isPending ||

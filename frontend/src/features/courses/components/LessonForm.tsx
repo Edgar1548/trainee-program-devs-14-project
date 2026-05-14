@@ -51,14 +51,14 @@ export function LessonForm({
       </label>
 
       <label className="grid gap-2">
-        <span className="font-semibold text-foreground">Contenido Editor.js</span>
+        <span className="font-semibold text-foreground">Contenido</span>
         <Controller
           control={control}
           name={`${fieldPrefix}.content`}
           render={({ field }) => (
             <textarea
               className="min-h-32 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-base text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              placeholder='{"blocks":[{"type":"paragraph","data":{"text":"Contenido de la leccion"}}]}'
+              placeholder="Escribe el contenido de la leccion"
               aria-invalid={Boolean(lessonErrors?.content)}
               {...field}
             />

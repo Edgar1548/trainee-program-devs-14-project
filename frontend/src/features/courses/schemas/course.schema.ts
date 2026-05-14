@@ -39,7 +39,7 @@ export const courseSchema = z.object({
     .trim()
     .min(10, 'La descripcion debe tener al menos 10 caracteres')
     .max(500, 'La descripcion no puede superar 500 caracteres'),
-  thumbnail: z.string().trim().url('Ingresa una URL valida para el thumbnail'),
+  thumbnail: z.string().trim().url('Ingresa una URL valida para el thumbnail').optional().or(z.literal('')),
   isPublic: z.boolean(),
   modules: z.array(moduleSchema),
 });

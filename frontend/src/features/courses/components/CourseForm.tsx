@@ -111,7 +111,7 @@ export function CourseForm({ initialValues, isSubmitting, submitLabel, onSubmit,
 
           <label className="flex items-center gap-3 rounded-lg border border-border p-3">
             <input className="size-5 accent-[var(--accent)]" type="checkbox" {...register('isPublic')} />
-            <span className="font-semibold text-foreground">Curso publico</span>
+            <span className="font-semibold text-foreground">Publicar</span>
           </label>
         </CardContent>
       </Card>

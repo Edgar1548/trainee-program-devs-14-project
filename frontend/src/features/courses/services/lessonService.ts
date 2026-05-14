@@ -22,27 +22,79 @@ const emptyEditorContent: EditorContent = {
   version: '2.28.0',
 };
 
+const createParagraphContent = (text: string): EditorContent => ({
+  time: Date.now(),
+  blocks: [
+    {
+      type: 'paragraph',
+      data: {
+        text,
+      },
+    },
+  ],
+  version: '2.28.0',
+});
+
 const parseEditorContent = (content?: string): EditorContent => {
-  if (!content) {
+  const trimmedContent = content?.trim();
+
+  if (!trimmedContent) {
     return emptyEditorContent;
   }
 
   try {
-    const parsedContent = JSON.parse(content) as unknown;
-    return parsedContent && typeof parsedContent === 'object' ? (parsedContent as EditorContent) : emptyEditorContent;
+    const parsedContent = JSON.parse(trimmedContent) as unknown;
+    return parsedContent && typeof parsedContent === 'object' ? (parsedContent as EditorContent) : createParagraphContent(trimmedContent);
   } catch {
-    return emptyEditorContent;
+    return createParagraphContent(trimmedContent);
   }
 };
 
-const stringifyEditorContent = (content?: EditorContent): string => {
-  return JSON.stringify(content ?? emptyEditorContent);
+export const editorContentToText = (content?: EditorContent | string): string => {
+  if (!content) {
+    return '';
+  }
+
+  if (typeof content === 'string') {
+    try {
+      return editorContentToText(JSON.parse(content) as EditorContent);
+    } catch {
+      return content;
+    }
+  }
+
+  const blocks = Array.isArray(content.blocks) ? content.blocks : [];
+
+  return blocks
+    .map((block) => {
+      if (!block || typeof block !== 'object' || !('data' in block)) {
+        return '';
+      }
+
+      const data = block.data;
+
+      if (!data || typeof data !== 'object') {
+        return '';
+      }
+
+      if ('text' in data && typeof data.text === 'string') {
+        return data.text;
+      }
+
+      if ('code' in data && typeof data.code === 'string') {
+        return data.code;
+      }
+
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n\n');
 };
 
 const toCourseLesson = (lesson: BackendLesson): CourseLesson => ({
   id: lesson.id,
   title: lesson.title,
-  content: stringifyEditorContent(lesson.content),
+  content: editorContentToText(lesson.content),
   order: lesson.order,
 });
 

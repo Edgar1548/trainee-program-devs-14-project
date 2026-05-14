@@ -6,16 +6,19 @@ import type {
   CoursesListResponse,
   CoursesQueryParams,
 } from '../types/course.types';
+import { editorContentToText, lessonService } from './lessonService';
+import { moduleService } from './moduleService';
 
 type BackendCourse = {
   id: string;
   title: string;
   description: string;
-  coverImage: string | null;
+  coverImage?: string | null;
   isPublic: boolean;
-  status: CourseStatus;
+  status?: CourseStatus;
   category?: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
   enrollmentCount?: number;
 };
 
@@ -28,7 +31,7 @@ type BackendCourseDetail = BackendCourse & {
     lessons: Array<{
       id: string;
       title: string;
-      content?: string;
+      content?: string | Record<string, unknown>;
       order: number;
     }>;
   }>;
@@ -41,8 +44,22 @@ type BackendCoursesListResponse = {
   };
 };
 
+const stringifyLessonContent = (content?: string | Record<string, unknown>) => {
+  if (!content) {
+    return '';
+  }
+
+  return typeof content === 'string' ? editorContentToText(content) : editorContentToText(content);
+};
+
 const toCourseSummary = (course: BackendCourse) => ({
-  ...course,
+  id: course.id,
+  title: course.title,
+  description: course.description,
+  isPublic: course.isPublic,
+  status: course.status ?? (course.isPublic ? 'PUBLISHED' : 'DRAFT'),
+  category: course.category,
+  updatedAt: course.updatedAt ?? course.createdAt ?? new Date().toISOString(),
   thumbnail: course.coverImage ?? '',
 });
 
@@ -57,11 +74,63 @@ const toCourseDetail = (course: BackendCourseDetail): CourseDetail => ({
       lessons: module.lessons.map((lesson) => ({
         id: lesson.id,
         title: lesson.title,
-        content: lesson.content ?? '',
+        content: stringifyLessonContent(lesson.content),
         order: lesson.order,
       })),
     })) ?? [],
 });
+
+const toCoursePayload = (payload: CourseFormData) => ({
+  title: payload.title,
+  description: payload.description,
+  isPublic: payload.isPublic,
+});
+
+const createCourseStructure = async (courseId: string, payload: CourseFormData) => {
+  for (const modulePayload of payload.modules) {
+    const createdModule = await moduleService.createModule(courseId, {
+      title: modulePayload.title,
+      description: modulePayload.description,
+    });
+
+    if (!createdModule.id) {
+      throw new Error('The module API did not return an id for the created module.');
+    }
+
+    for (const lessonPayload of modulePayload.lessons) {
+      await lessonService.createLesson(createdModule.id, {
+        title: lessonPayload.title,
+        content: lessonPayload.content,
+      });
+    }
+  }
+};
+
+const hydrateLessonContents = async (course: CourseDetail): Promise<CourseDetail> => {
+  const modules = await Promise.all(
+    course.modules.map(async (module) => ({
+      ...module,
+      lessons: await Promise.all(
+        module.lessons.map(async (lesson) => {
+          if (!lesson.id) {
+            return lesson;
+          }
+
+          try {
+            return await lessonService.getLesson(lesson.id);
+          } catch {
+            return lesson;
+          }
+        }),
+      ),
+    })),
+  );
+
+  return {
+    ...course,
+    modules,
+  };
+};
 
 const toSearchParams = (params: CoursesQueryParams) => {
   const searchParams = new URLSearchParams();
@@ -97,16 +166,18 @@ export const courseService = {
 
   async getCourse(courseId: string): Promise<CourseDetail> {
     const { data } = await api.get<BackendCourseDetail>(`/api/courses/${courseId}`);
-    return toCourseDetail(data);
+    return hydrateLessonContents(toCourseDetail(data));
   },
 
   async createCourse(payload: CourseFormData): Promise<CourseDetail> {
-    const { data } = await api.post<BackendCourseDetail>('/api/courses', payload);
-    return toCourseDetail(data);
+    const { data } = await api.post<BackendCourseDetail>('/api/courses', toCoursePayload(payload));
+    await createCourseStructure(data.id, payload);
+
+    return this.getCourse(data.id);
   },
 
   async updateCourse(courseId: string, payload: CourseFormData): Promise<CourseDetail> {
-    const { data } = await api.put<BackendCourseDetail>(`/api/courses/${courseId}`, payload);
+    const { data } = await api.put<BackendCourseDetail>(`/api/courses/${courseId}`, toCoursePayload(payload));
     return toCourseDetail(data);
   },
 
