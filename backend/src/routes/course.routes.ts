@@ -11,11 +11,13 @@ import {
   listCourseEnrollments,
   unassignCourse,
 } from '../controllers/assignment.controller.js';
+import { createCourseModule, listCourseModules } from '../controllers/module.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { roleMiddleware } from '../middleware/role.middleware.js';
 import { validateMiddleware } from '../middleware/validate.middleware.js';
 import { createCourseSchema } from '../modules/courses/schemas/createCourseSchema.js';
 import { assignCourseSchema } from '../modules/courses/schemas/assignCourseSchema.js';
+import { createModuleSchema } from '../modules/courses/schemas/moduleSchema.js';
 import { updateCourseSchema } from '../modules/courses/schemas/updateCourseSchema.js';
 
 const router = Router();
@@ -30,6 +32,14 @@ router.post(
   assignCourse,
 );
 router.get('/:courseId/enrollments', authMiddleware, roleMiddleware(['ADMIN']), listCourseEnrollments);
+router.get('/:courseId/modules', listCourseModules);
+router.post(
+  '/:courseId/modules',
+  authMiddleware,
+  roleMiddleware(['ADMIN']),
+  validateMiddleware(createModuleSchema),
+  createCourseModule,
+);
 router.delete('/:courseId/assign/:userId', authMiddleware, roleMiddleware(['ADMIN']), unassignCourse);
 router.get('/:id', getCourseById);
 router.put('/:id', authMiddleware, roleMiddleware(['ADMIN']), validateMiddleware(updateCourseSchema), updateCourse);
